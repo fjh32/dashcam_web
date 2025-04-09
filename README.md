@@ -4,6 +4,8 @@
 
 **dashcam_web** is the web frontend for the `dashcam` system. It serves static files and provides a simple HTTP server interface, designed to run either on a Raspberry Pi or a desktop system.
 
+Access the web interace by going to this url on a browser: [http://ip_of_dashcam]()
+
 See also: [Dashcam](https://github.com/fjh32/dashcam)
 ---
 
