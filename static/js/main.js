@@ -101,8 +101,9 @@ function displayError(message) {
     var errorMessage = document.getElementById('error-message');
     errorMessage.textContent = 'Error: ' + message;
     console.error(message);
-}
 
+    setTimeout(clearError, 3000); // Clear after 10 seconds
+}
 function clearError() {
     var errorMessage = document.getElementById('error-message');
     errorMessage.textContent = '';

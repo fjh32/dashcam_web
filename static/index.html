@@ -7,8 +7,6 @@
     <script src="/js/hls.min.1.4.10.js"></script>
     <script src="/js/main.js"></script>
     <link rel="stylesheet" href="/css/main.css">
-    <style>
-    </style>
 </head>
 <body>
 
@@ -16,12 +14,9 @@
         <video id="video" controls preload="none" playsinline></video>
     </div>
 
+    <div id="error-message"></div>
+
     <table>
-        <tr>
-            <td colspan="3">
-                <div id="error-message"></div>
-            </td>
-        </tr>
         <tr>
             <td><button class="btn" id="play-hls-button">Play LiveStream</button></td>
             <td><button class="btn" id="play-recording-button">Play Selected Recording</button></td>
@@ -30,22 +25,16 @@
                     <button class="btn" type="submit">Bookmark Most Recent Recording</button>
                 </form>
             </td>
-            <!-- <button class="btn" onclick="getSelectedRecording()">Get Selected Recording</button> -->
         </tr>
         <tr class="recording-row">
-            <td><h2>Recording List</h2></td>
-            <td colspan="2">
-                <p class="recordings">
-                    <ul id="recordingList"></ul>
-                </p>
+            <td colspan="3">
+                <h2>Recording List</h2>
+                <ul id="recordingList"></ul>
             </td>
         </tr>
-        
         <tr>
             <td colspan="3">
-                <p class="killbtn">
-                    <button id="stop-button" onclick="shutdownCamService()">Safely Shutdown Car Cam</button>
-                </p>
+                <button id="stop-button" class="btn" onclick="shutdownCamService()">Safely Shutdown Car Cam</button>
             </td>
         </tr>
     </table>
