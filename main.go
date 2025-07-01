@@ -100,7 +100,7 @@ func main() {
 	http.HandleFunc("/restart_cam_service", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Restart request received for dashcam.service")
 
-		cmd := exec.Command("systemctl", "restart", "dashcam.service")
+		cmd := exec.Command("sudo", "/usr/bin/systemctl", "restart", "dashcam.service")
 		err := cmd.Run()
 
 		w.Header().Set("Content-Type", "application/json")

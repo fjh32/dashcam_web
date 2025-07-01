@@ -7,6 +7,7 @@ SERVICE_NAME="dashcam_web.service"
 SERVICE_TEMPLATE="dashcam_web.service.template"
 INSTALL_PATH="/usr/local/bin/dashcam_web_exe"
 STATIC_DIR="/var/lib/dashcam/static"
+SUDOERS_FILE="/etc/sudoers.d/dashcam_restart"
 
 # Check for --desktop flag
 if [[ "$1" == "--desktop" ]]; then
@@ -41,6 +42,10 @@ echo "🔄 Reloading and enabling systemd service..."
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
+
+echo "🔐 Granting $USER_NAME permission to restart dashcam.service via sudo..."
+echo "$USER_NAME ALL=(ALL) NOPASSWD: /bin/systemctl restart dashcam.service" | sudo tee "$SUDOERS_FILE" > /dev/null
+sudo chmod 440 "$SUDOERS_FILE"
 
 echo
 echo "✅ dashcam_web_exe installation complete!"
