@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ const (
 	pipePath       = "/tmp/camrecorder.pipe"
 	port           = 80
 )
+
 func main() {
 	http.Handle("/", http.FileServer(http.Dir(webStaticDir)))
 
@@ -72,6 +74,19 @@ func main() {
 		json.NewEncoder(w).Encode(entries)
 	})
 
+	http.HandleFunc("/service_status", func(w http.ResponseWriter, r *http.Request) {
+		cmd := exec.Command("systemctl", "show", "-p", "ActiveState", "--value", "dashcam.service")
+		output, err := cmd.Output()
+		status := "unknown"
+		if err == nil {
+			status = strings.TrimSpace(string(output))
+		} else {
+			log.Printf("Error checking service status: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": status})
+	})
+
 	http.HandleFunc("/shutdown_cam_service", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HTTP REQUEST ON /shutdown_cam_service. Sending kill message to CamService pipe in 1 second.")
 		time.Sleep(1 * time.Second)
@@ -80,6 +95,22 @@ func main() {
 			defer pipeFile.Close()
 			pipeFile.WriteString("kill\n")
 		}
+	})
+
+	http.HandleFunc("/restart_cam_service", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Restart request received for dashcam.service")
+
+		cmd := exec.Command("systemctl", "restart", "dashcam.service")
+		err := cmd.Run()
+
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			log.Printf("Failed to restart dashcam.service: %v", err)
+			http.Error(w, `{"status":"error","message":"Failed to restart service"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.Write([]byte(`{"status":"ok","message":"Service restarted"}`))
 	})
 
 	http.HandleFunc("/save_recording", func(w http.ResponseWriter, r *http.Request) {

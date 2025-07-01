@@ -18,6 +18,29 @@ function shutdownCamService() {
     });
 }
 
+function restartCamService() {
+    fetch('/restart_cam_service', {
+        method: 'GET',
+    })
+    .then(response => response.json())
+    .then(data => {
+        var errMsg = document.getElementById('error-message');
+        if (data.status === 'ok') {
+            errMsg.innerHTML = "Restarted Car Cam Service.";
+            errMsg.style.color = "green";
+        } else {
+            errMsg.innerHTML = "Failed to restart service.";
+            errMsg.style.color = "red";
+        }
+    })
+    .catch(err => {
+        var errMsg = document.getElementById('error-message');
+        errMsg.innerHTML = "Error restarting service.";
+        errMsg.style.color = "red";
+        console.error(err);
+    });
+}
+
 function populateRecordingList() {
     const recordingListElement = document.getElementById('recordingList');
     
@@ -107,6 +130,27 @@ function displayError(message) {
 function clearError() {
     var errorMessage = document.getElementById('error-message');
     errorMessage.textContent = '';
+}
+
+function updateServiceStatus() {
+    fetch('/service_status')
+        .then(response => response.json())
+        .then(data => {
+            const statusText = document.getElementById('status-text');
+            if (data.status === 'active') {
+                statusText.textContent = 'active';
+                statusText.style.color = 'green';
+            } else {
+                statusText.textContent = data.status || 'unknown';
+                statusText.style.color = 'red';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching service status:', error);
+            const statusText = document.getElementById('status-text');
+            statusText.textContent = 'unreachable';
+            statusText.style.color = 'red';
+        });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -222,6 +266,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
     populateRecordingList();
+    updateServiceStatus();
+    
 });
 
 setInterval(populateRecordingList, 3000);
+setInterval(updateServiceStatus, 5000);
