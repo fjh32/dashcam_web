@@ -10,6 +10,7 @@
 // }
 let currentTimelineStartSegment = null;
 let suppressSliderUpdate = false;
+let livestreaming = false;
 
 
 
@@ -53,7 +54,7 @@ function updateTimelineSlider(initial = false) {
 
             slider.max = data.latest_segment;
 
-            if (initial) {
+            if (initial || livestreaming) {
                 syncTimelineSliderWithLatest();
             } else if (currentTimelineStartSegment === data.latest_segment) {
                 slider.value = data.latest_segment;
@@ -186,6 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
     playHlsButton.addEventListener('click', function() {
         clearError(); // Clear any previous error messages
         syncTimelineSliderWithLatest();
+        livestreaming = true;
         initializeHlsPlayer(streamUrl);
     });
 
@@ -193,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const startSegment = parseInt(this.value);
         currentTimelineStartSegment = startSegment;
         suppressSliderUpdate = true;
+        livestreaming = false;
         initializeHlsPlayer(`/timeline.m3u8?start=${startSegment}`);
     });
 
