@@ -8,6 +8,10 @@
 //         super.load(context, config, callbacks);
 //     }
 // }
+let currentTimelineStartSegment = null;
+let suppressSliderUpdate = false;
+
+
 
 function shutdownCamService() {
     fetch('/shutdown_cam_service', {
@@ -41,83 +45,30 @@ function restartCamService() {
     });
 }
 
-function populateRecordingList() {
-    const recordingListElement = document.getElementById('recordingList');
-    
-    // Check if any radio button is currently selected and store its value
-    const selectedRadio = document.querySelector('input[name="recording"]:checked');
-    const selectedValue = selectedRadio ? selectedRadio.value : null;
-
-    // Fetch JSON data from /recording_list
-    fetch('/recording_list')
-        .then(response => response.json()) // Parse the response as JSON
+function updateTimelineSlider(initial = false) {
+    fetch('/segment_count')
+        .then(response => response.json())
         .then(data => {
-            // Clear all contents of the <ul> element before repopulating it
-            recordingListElement.innerHTML = "";
+            const slider = document.getElementById('timelineSlider');
 
-            // Ensure data is an array of strings
-            if (Array.isArray(data)) {
-                // Loop through each recording and create list items with radio buttons
-                data.forEach(recording => {
-//                    if (!recording.includes('output')) {
-                        const listItem = document.createElement('li');
-                        const radio = document.createElement('input');
-                        const label = document.createElement('label');
+            slider.max = data.latest_segment;
 
-                        // Set up the radio button attributes
-                        radio.type = 'radio';
-                        radio.name = 'recording'; // All radio buttons share the same name
-                        radio.value = recording;
-                        radio.id = recording; // Set an ID for the label
-
-                        // Check if this radio should be selected based on the previous selection
-                        if (recording === selectedValue) {
-                            radio.checked = true;
-                        }
-
-                        // Set up the label for the radio button
-                        label.textContent = recording;
-                        label.htmlFor = recording;
-
-                        // Append the radio button and label to the list item
-                        listItem.appendChild(radio);
-                        listItem.appendChild(label);
-                        recordingListElement.appendChild(listItem);
-                    //}
-                });
+            if (initial) {
+                syncTimelineSliderWithLatest();
+            } else if (currentTimelineStartSegment === data.latest_segment) {
+                slider.value = data.latest_segment;
             }
-        })
-        .catch(error => {
-            console.error('Error fetching the recording list:', error);
         });
 }
 
-
-// Function to get the selected recording and set the video player source
-function getSelectedRecording() {
-    const radios = document.getElementsByName('recording');
-    let selectedValue = null;
-
-    // Loop through radio buttons to find the selected one
-    radios.forEach(radio => {
-        if (radio.checked) {
-            selectedValue = radio.value;
-        }
-    });
-
-    if (selectedValue) {
-        if (hls) {
-            hls.destroy(); // Destroy HLS instance to free the video element
-            hls = null;
-        }
-        // Set the video player source to the selected recording
-        const video = document.getElementById('video');
-        video.src = `/recordings/${selectedValue}`;
-        video.load();  // Reload the video to reflect the new source
-        alert('Selected recording: ' + selectedValue);
-    } else {
-        alert('No recording selected.');
-    }
+function syncTimelineSliderWithLatest() {
+    const slider = document.getElementById('timelineSlider');
+    const latestSegment = parseInt(slider.max);  // reuse the latest known value from periodic update
+    // Update internal tracking
+    currentTimelineStartSegment = latestSegment;
+    suppressSliderUpdate = true;
+    // Sync slider to live edge
+    slider.value = latestSegment;
 }
 
 function displayError(message) {
@@ -153,9 +104,10 @@ function updateServiceStatus() {
         });
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+///// START DOMContentLoaded
 document.addEventListener('DOMContentLoaded', function() {
     var video = document.getElementById('video');
-    var playRecordingButton = document.getElementById('play-recording-button');
     var playHlsButton = document.getElementById('play-hls-button');
     
     var streamUrl = '/livestream.m3u8';
@@ -230,45 +182,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Play Selected Recording button event listener
-    playRecordingButton.addEventListener('click', function() {
-        clearError();
-        const radios = document.getElementsByName('recording');
-        let selectedValue = null;
-    
-        radios.forEach(radio => {
-            if (radio.checked) {
-                selectedValue = radio.value;
-            }
-        });
-    
-        if (selectedValue) {
-            const video = document.getElementById('video');
-            if (selectedValue.endsWith('.m3u8')) {
-                initializeHlsPlayer(`/recordings/${selectedValue}`);
-            } else {
-                video.src = `/recordings/${selectedValue}`;
-                video.load();
-                video.play().catch(function(error) {
-                    displayError('Playback error: ' + error.message);
-                });
-            }
-        } else {
-            displayError('No recording selected.');
-        }
-    });
-
     // Play HLS Stream button event listener
     playHlsButton.addEventListener('click', function() {
         clearError(); // Clear any previous error messages
+        syncTimelineSliderWithLatest();
         initializeHlsPlayer(streamUrl);
     });
 
+    document.getElementById('timelineSlider').addEventListener('change', function() {
+        const startSegment = parseInt(this.value);
+        currentTimelineStartSegment = startSegment;
+        suppressSliderUpdate = true;
+        initializeHlsPlayer(`/timeline.m3u8?start=${startSegment}`);
+    });
 
-    populateRecordingList();
     updateServiceStatus();
-    
+    updateTimelineSlider(true);
+    syncTimelineSliderWithLatest(); // call once here
+
+    setInterval(() => {
+        const video = document.getElementById('video');
+        const slider = document.getElementById('timelineSlider');
+
+        if (!video || !slider || currentTimelineStartSegment === null) return;
+
+        if (video.readyState >= 2 && !suppressSliderUpdate) {
+            const currentSegment = currentTimelineStartSegment + Math.floor(video.currentTime / 2);
+            slider.value = currentSegment;
+        }
+
+        // Only suppress the user-set sync once
+        if (suppressSliderUpdate) suppressSliderUpdate = false;
+    }, 1000);
+
 });
 
-setInterval(populateRecordingList, 3000);
+///// END DOMContentLoaded
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 setInterval(updateServiceStatus, 5000);
+setInterval(updateTimelineSlider, 5000);

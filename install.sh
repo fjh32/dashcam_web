@@ -36,7 +36,7 @@ if [ ! -d "$STATIC_DIR" ]; then
 fi
 
 echo "📥 Copying static assets to $STATIC_DIR..."
-sudo cp -r ./static/* "$STATIC_DIR/"
+sudo cp -r ./static/* "$STATIC_DIR/" || true
 
 echo "🔄 Reloading and enabling systemd service..."
 sudo systemctl daemon-reload
@@ -45,6 +45,7 @@ sudo systemctl restart "$SERVICE_NAME"
 
 echo "🔐 Granting $USER_NAME permission to restart dashcam.service via sudo..."
 echo "$USER_NAME ALL=(ALL) NOPASSWD: /bin/systemctl restart dashcam.service" | sudo tee "$SUDOERS_FILE" > /dev/null
+echo "$USER_NAME ALL=(ALL) NOPASSWD: /bin/systemctl stop dashcam.service" | sudo tee "$SUDOERS_FILE" > /dev/null
 sudo chmod 440 "$SUDOERS_FILE"
 
 echo

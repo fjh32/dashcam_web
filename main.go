@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,21 +32,6 @@ func main() {
 		http.ServeFile(w, r, filepath.Join(recordingsPath, "livestream.m3u8"))
 	})
 
-	http.HandleFunc("/segment", func(w http.ResponseWriter, r *http.Request) {
-		segment := strings.TrimPrefix(r.URL.Path, "/segment")
-		w.Header().Set("Content-Type", "video/mp2t")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		http.ServeFile(w, r, filepath.Join(recordingsPath, "segment"+segment))
-	})
-
-	http.HandleFunc("/output", func(w http.ResponseWriter, r *http.Request) {
-		segment := strings.TrimPrefix(r.URL.Path, "/")
-		// segment := r.URL.Path
-		w.Header().Set("Content-Type", "video/mp2t")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		http.ServeFile(w, r, filepath.Join(recordingsPath, segment))
-	})
-
 	http.HandleFunc("/recordings/", func(w http.ResponseWriter, r *http.Request) {
 		filename := strings.TrimPrefix(r.URL.Path, "/recordings/")
 		if strings.HasSuffix(filename, ".m3u8") {
@@ -54,24 +41,6 @@ func main() {
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		http.ServeFile(w, r, filepath.Join(recordingsPath, filename))
-	})
-
-	http.HandleFunc("/recording_list", func(w http.ResponseWriter, r *http.Request) {
-		entries := []string{}
-		fs.WalkDir(os.DirFS(recordingsPath), ".", func(path string, d fs.DirEntry, err error) error {
-			if !d.IsDir() && strings.HasSuffix(path, ".m3u8") && strings.Contains(path, "output") {
-				entries = append(entries, path)
-			}
-			return nil
-		})
-
-		sort.Slice(entries, func(i, j int) bool {
-			iInfo, _ := os.Stat(filepath.Join(recordingsPath, entries[i]))
-			jInfo, _ := os.Stat(filepath.Join(recordingsPath, entries[j]))
-			return iInfo.ModTime().After(jInfo.ModTime())
-		})
-
-		json.NewEncoder(w).Encode(entries)
 	})
 
 	http.HandleFunc("/service_status", func(w http.ResponseWriter, r *http.Request) {
@@ -88,13 +57,20 @@ func main() {
 	})
 
 	http.HandleFunc("/shutdown_cam_service", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("HTTP REQUEST ON /shutdown_cam_service. Sending kill message to CamService pipe in 1 second.")
-		time.Sleep(1 * time.Second)
-		pipeFile, err := os.OpenFile(pipePath, os.O_WRONLY|os.O_APPEND, 0600)
-		if err == nil {
-			defer pipeFile.Close()
-			pipeFile.WriteString("kill\n")
+
+		log.Println("SHUTDOWN request received for dashcam.service")
+
+		cmd := exec.Command("sudo", "/usr/bin/systemctl", "stop", "dashcam.service")
+		err := cmd.Run()
+
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			log.Printf("Failed to SHUTDOWN dashcam.service: %v", err)
+			http.Error(w, `{"status":"error","message":"Failed to SHUTDOWN service"}`, http.StatusInternalServerError)
+			return
 		}
+
+		w.Write([]byte(`{"status":"ok","message":"dashcam.service SHUTDOWN"}`))
 	})
 
 	http.HandleFunc("/restart_cam_service", func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +86,7 @@ func main() {
 			return
 		}
 
-		w.Write([]byte(`{"status":"ok","message":"Service restarted"}`))
+		w.Write([]byte(`{"status":"ok","message":"dashcam.service restarted"}`))
 	})
 
 	http.HandleFunc("/save_recording", func(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +105,93 @@ func main() {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
+	http.HandleFunc("/timeline.m3u8", handleTimelineM3U8)
+	http.HandleFunc("/segment_count", handleSegmentCount)
+
 	log.Printf("Serving on :%d...\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+}
+
+func handleTimelineM3U8(w http.ResponseWriter, r *http.Request) {
+	startParam := r.URL.Query().Get("start")
+	startSeg := 0
+	if startParam != "" {
+		if s, err := strconv.Atoi(startParam); err == nil && s >= 0 {
+			startSeg = s
+		}
+	}
+
+	const maxSegments = 300
+	segmentMap := make(map[int]string)
+
+	filepath.WalkDir(recordingsPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		base := filepath.Base(path)
+		matches := regexp.MustCompile(`^output_(\d+)\.ts$`).FindStringSubmatch(base)
+		if len(matches) == 2 {
+			if segNum, err := strconv.Atoi(matches[1]); err == nil {
+				relPath := strings.TrimPrefix(path, recordingsPath+"/")
+				segmentMap[segNum] = relPath
+			}
+		}
+		return nil
+	})
+
+	var segKeys []int
+	for k := range segmentMap {
+		if k >= startSeg {
+			segKeys = append(segKeys, k)
+		}
+	}
+	sort.Ints(segKeys)
+	if len(segKeys) > maxSegments {
+		segKeys = segKeys[:maxSegments]
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	fmt.Fprintln(w, "#EXTM3U")
+	fmt.Fprintln(w, "#EXT-X-VERSION:3")
+	fmt.Fprintln(w, "#EXT-X-TARGETDURATION:2") // take note of this to make sure its correct - need ipc between this and dashcam of some sort
+	fmt.Fprintf(w, "#EXT-X-MEDIA-SEQUENCE:%d\n", startSeg)
+
+	for _, k := range segKeys {
+		fmt.Fprintln(w, "#EXTINF:2.0,")
+		fmt.Fprintf(w, "/recordings/%s\n", segmentMap[k])
+	}
+
+	fmt.Fprintln(w, "#EXT-X-ENDLIST")
+}
+
+func handleSegmentCount(w http.ResponseWriter, r *http.Request) {
+	segmentSet := make(map[int]struct{})
+	maxSegment := -1
+
+	filepath.WalkDir(recordingsPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		base := filepath.Base(path)
+		matches := regexp.MustCompile(`^output_(\d+)\.ts$`).FindStringSubmatch(base)
+		if len(matches) == 2 {
+			if segNum, err := strconv.Atoi(matches[1]); err == nil {
+				segmentSet[segNum] = struct{}{}
+				if segNum > maxSegment {
+					maxSegment = segNum
+				}
+			}
+		}
+		return nil
+	})
+
+	count := len(segmentSet)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(map[string]int{
+		"segment_count":  count,
+		"latest_segment": maxSegment,
+	})
 }

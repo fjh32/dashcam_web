@@ -18,18 +18,17 @@
 
     <table>
         <tr>
+            <td colspan="3" style="text-align: center;">
+                <label for="timelineSlider">Playback Timeline</label><br>
+                <input type="range" id="timelineSlider" min="0" max="0" value="0" step="1" style="width: 80%;">
+            </td>
+        </tr>
+        <tr>
             <td><button class="btn" id="play-hls-button">Play LiveStream</button></td>
-            <td><button class="btn" id="play-recording-button">Play Selected Recording</button></td>
             <td>
                 <form action="/save_recording" method="post">
                     <button class="btn" type="submit">Bookmark Most Recent Recording</button>
                 </form>
-            </td>
-        </tr>
-        <tr class="recording-row">
-            <td colspan="3">
-                <h2>Recording List</h2>
-                <ul id="recordingList"></ul>
             </td>
         </tr>
         <tr>
