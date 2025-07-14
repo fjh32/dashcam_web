@@ -1,0 +1,14 @@
+#Put me in /etc/systemd/system/
+[Unit]
+Description=Web Interface for Dashcam
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dashcam_web_exe
+Restart=on-failure
+User=@USER@
+WorkingDirectory=/var/lib/dashcam/static
+
+[Install]
+WantedBy=multi-user.target

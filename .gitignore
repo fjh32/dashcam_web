@@ -1,0 +1,5 @@
+dashcam_web_exe
+.public_git
+.public_git/*
+.private_git
+.private_git/*
